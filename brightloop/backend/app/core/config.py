@@ -1,0 +1,12 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://brightloop:brightloop_local@localhost:5432/brightloop",
+)
+JWT_SECRET = os.getenv("JWT_SECRET", "replace-this-for-local-development")

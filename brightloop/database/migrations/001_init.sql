@@ -1,0 +1,2 @@
+-- Initial database migration.
+-- Add domain tables here as the billing schema is defined.
