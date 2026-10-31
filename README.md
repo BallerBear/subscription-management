@@ -108,7 +108,7 @@ All three share one password: `Brightloop@123`
 | Customer | `customer@kaveri.example.com` |
 
 The customer account belongs to Kaveri Textiles, so it sees only Kaveri's subscriptions and invoices.
-![Brightloop login screen](screenshots/login.png)
+![Brightloop login screen](photos/login.png)
 
 A fresh install has no admin at all. If you start from an empty database, set `ADMIN_BOOTSTRAP_TOKEN` in `.env` and call `POST /auth/bootstrap-admin` once. It refuses to run again after an admin exists.
 
@@ -176,7 +176,7 @@ Phone numbers, emails and GSTINs are validated in the browser, on the server, an
 
 A subscription ties a customer to a plan, a payment term and a set of product lines.
 
-![Subscriptions list with status filters](screenshots/subscriptions.png)
+![Subscriptions list with status filters](photos/subscriptions.png)
 
 **Creating one.** Prices are *snapshotted* onto the subscription lines at creation: product price plus variant extra, with the tax name and rate copied alongside. If the catalog price changes next year, existing subscriptions keep what the customer agreed to. If the plan has a base fee, it becomes its own line ("Growth plan fee"). The service checks that the start date falls inside the plan's availability window and that quantities meet the plan's minimum.
 
@@ -241,9 +241,9 @@ There's a dedicated Overdue screen for chasing, ordered oldest first, showing th
 
 The dashboard leads with the number a finance lead cares about most (what's outstanding, and what's overdue within that) and then a table of the invoices that need attention. It also shows active subscription count, monthly recurring revenue, and what has been collected this month, plus a bar chart of collections by month.
 
-![Admin dashboard: outstanding, overdue, collected this month, MRR and active subscriptions](screenshots/dashboard.png)
+![Admin dashboard: outstanding, overdue, collected this month, MRR and active subscriptions](photos/dashboard.png)
 
-![Dashboard: collections by month, Time Machine shortcut and latest invoices](screenshots/dashboard-invoices.png)
+![Dashboard: collections by month, Time Machine shortcut and latest invoices](photos/dashboard-invoices.png)
 
 Behind it, three report endpoints (`kpis`, `monthly-collections`, `overdue`) read from database views, so the numbers on screen are defined once in SQL and are the same wherever they appear. Pages load fresh data when you open them and again after any action you take, so recording a payment is reflected straight away when you return to the dashboard.
 
@@ -251,7 +251,7 @@ Behind it, three report endpoints (`kpis`, `monthly-collections`, `overdue`) rea
 
 Customers get their own small area with an overview, their subscriptions and their invoices, with printable invoice pages.
 
-![Customer portal overview](screenshots/customer-portal.png)
+![Customer portal overview](photos/customer-portal.png)
 
 The security detail worth knowing: portal endpoints **never take a customer id from the URL or request body.** The server works out who you are from your login and looks up your customer record. Changing an invoice number in the address bar to try to see someone else's returns a 404, because the query is scoped to you.
 
