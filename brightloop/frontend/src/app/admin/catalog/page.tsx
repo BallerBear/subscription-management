@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Layers, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Layers, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Input, Select } from "@/components/Field";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/States";
@@ -18,8 +18,11 @@ type Product = {
 };
 type Plan = {
   id: number; name: string; price: number; billing_period: string; min_quantity: number;
-  tax_id: number | null; tax_name?: string | null; is_active: boolean;
+  available_from: string; available_to: string | null; tax_id: number | null;
+  tax_name?: string | null; auto_close: boolean; allow_early_close: boolean;
+  allow_pause: boolean; allow_renew: boolean; is_active: boolean;
 };
+type EditTarget = { kind: Tab; id: number };
 type Variant = { id: number; product_id: number; attribute: string; value: string; extra_price: number; is_active: boolean };
 
 const toPaise = (rupees: string) => Math.round(Number(rupees) * 100);
@@ -33,6 +36,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [expandedProduct, setExpandedProduct] = useState<number | null>(null);
@@ -41,6 +45,7 @@ export default function CatalogPage() {
   const [variantAttribute, setVariantAttribute] = useState("");
   const [variantValue, setVariantValue] = useState("");
   const [variantPrice, setVariantPrice] = useState("0");
+  const [editingVariantId, setEditingVariantId] = useState<number | null>(null);
 
   const [taxName, setTaxName] = useState("");
   const [taxRate, setTaxRate] = useState("18");
@@ -82,6 +87,48 @@ export default function CatalogPage() {
 
   useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
+  function startEditTax(tax: Tax) {
+    setTab("taxes");
+    setTaxName(tax.name);
+    setTaxRate((tax.rate_bps / 100).toString());
+    setEditTarget({ kind: "taxes", id: tax.id });
+    setShowForm(true);
+    setError("");
+    setNotice("");
+  }
+
+  function startEditProduct(product: Product) {
+    setTab("products");
+    setProductName(product.name);
+    setProductType(product.type);
+    setProductPrice((product.sales_price / 100).toFixed(2));
+    setProductCost((product.cost_price / 100).toFixed(2));
+    setProductTax(String(product.tax_id));
+    setEditTarget({ kind: "products", id: product.id });
+    setShowForm(true);
+    setError("");
+    setNotice("");
+  }
+
+  function startEditPlan(plan: Plan) {
+    setTab("plans");
+    setPlanName(plan.name);
+    setPlanPrice((plan.price / 100).toFixed(2));
+    setPlanPeriod(plan.billing_period);
+    setPlanMinQuantity(String(plan.min_quantity));
+    setPlanFrom(plan.available_from.slice(0, 10));
+    setPlanTo(plan.available_to?.slice(0, 10) ?? "");
+    setPlanTax(plan.tax_id === null ? "" : String(plan.tax_id));
+    setAutoClose(plan.auto_close);
+    setAllowEarlyClose(plan.allow_early_close);
+    setAllowPause(plan.allow_pause);
+    setAllowRenew(plan.allow_renew);
+    setEditTarget({ kind: "plans", id: plan.id });
+    setShowForm(true);
+    setError("");
+    setNotice("");
+  }
+
   async function createItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -89,16 +136,16 @@ export default function CatalogPage() {
     setNotice("");
     try {
       if (tab === "taxes") {
-        await apiRequest("/catalog/taxes", {
-          method: "POST",
+        await apiRequest(editTarget ? `/catalog/taxes/${editTarget.id}` : "/catalog/taxes", {
+          method: editTarget ? "PATCH" : "POST",
           body: JSON.stringify({ name: taxName, rate_bps: Math.round(Number(taxRate) * 100) }),
         });
         setTaxName("");
         setTaxRate("18");
-        setNotice("Tax rule created.");
+        setNotice(editTarget ? "Tax rule updated." : "Tax rule created.");
       } else if (tab === "products") {
-        await apiRequest("/catalog/products", {
-          method: "POST",
+        await apiRequest(editTarget ? `/catalog/products/${editTarget.id}` : "/catalog/products", {
+          method: editTarget ? "PATCH" : "POST",
           body: JSON.stringify({
             name: productName,
             type: productType,
@@ -111,10 +158,13 @@ export default function CatalogPage() {
         setProductPrice("");
         setProductCost("0");
         setProductTax("");
-        setNotice("Product created.");
+        setNotice(editTarget ? "Product updated." : "Product created.");
       } else {
-        await apiRequest("/catalog/plans", {
-          method: "POST",
+        if (Number(planPrice || "0") > 0 && !planTax) {
+          throw new Error("Choose a tax rule for a plan with a fee.");
+        }
+        await apiRequest(editTarget ? `/catalog/plans/${editTarget.id}` : "/catalog/plans", {
+          method: editTarget ? "PATCH" : "POST",
           body: JSON.stringify({
             name: planName,
             price: toPaise(planPrice || "0"),
@@ -133,9 +183,10 @@ export default function CatalogPage() {
         setPlanPrice("0");
         setPlanTax("");
         setPlanTo("");
-        setNotice("Subscription plan created.");
+        setNotice(editTarget ? "Subscription plan updated." : "Subscription plan created.");
       }
       setShowForm(false);
+      setEditTarget(null);
       await loadCatalog();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.detail : cause instanceof Error ? cause.message : "Could not save this catalogue item.");
@@ -163,6 +214,10 @@ export default function CatalogPage() {
       return;
     }
     setExpandedProduct(productId);
+    setEditingVariantId(null);
+    setVariantAttribute("");
+    setVariantValue("");
+    setVariantPrice("0");
     setVariantLoading(true);
     setError("");
     try {
@@ -181,8 +236,12 @@ export default function CatalogPage() {
     setSaving(true);
     setError("");
     try {
-      await apiRequest(`/catalog/products/${expandedProduct}/variants`, {
-        method: "POST",
+      await apiRequest(
+        editingVariantId === null
+          ? `/catalog/products/${expandedProduct}/variants`
+          : `/catalog/products/${expandedProduct}/variants/${editingVariantId}`,
+        {
+          method: editingVariantId === null ? "POST" : "PATCH",
         body: JSON.stringify({
           attribute: variantAttribute,
           value: variantValue,
@@ -193,7 +252,8 @@ export default function CatalogPage() {
       setVariantValue("");
       setVariantPrice("0");
       setVariants(await apiRequest<Variant[]>(`/catalog/products/${expandedProduct}/variants`));
-      setNotice("Variant added.");
+      setNotice(editingVariantId === null ? "Variant added." : "Variant updated.");
+      setEditingVariantId(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not add this variant.");
     } finally {
@@ -201,10 +261,25 @@ export default function CatalogPage() {
     }
   }
 
+  function startEditVariant(variant: Variant) {
+    setVariantAttribute(variant.attribute);
+    setVariantValue(variant.value);
+    setVariantPrice((variant.extra_price / 100).toFixed(2));
+    setEditingVariantId(variant.id);
+    setError("");
+    setNotice("");
+  }
+
   async function deactivateVariant(variantId: number) {
     if (expandedProduct === null) return;
     try {
       await apiRequest(`/catalog/products/${expandedProduct}/variants/${variantId}`, { method: "DELETE" });
+      if (editingVariantId === variantId) {
+        setEditingVariantId(null);
+        setVariantAttribute("");
+        setVariantValue("");
+        setVariantPrice("0");
+      }
       setVariants(await apiRequest<Variant[]>(`/catalog/products/${expandedProduct}/variants`));
       setNotice("Variant deactivated.");
     } catch (cause) {
@@ -216,13 +291,14 @@ export default function CatalogPage() {
     { header: "Tax name", cell: (tax) => <span className="font-medium">{tax.name}</span> },
     { header: "Rate", numeric: true, cell: (tax) => `${(tax.rate_bps / 100).toFixed(2)}%` },
     { header: "Status", cell: (tax) => activeLabel(tax.is_active) },
-    { header: "", cell: (tax) => tax.is_active ? <Button variant="danger" className="h-8 px-2" onClick={() => void deactivate("taxes", tax.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button> : null },
+    { header: "", cell: (tax) => <div className="flex items-center gap-2"><Button variant="ghost" className="h-8 px-2" onClick={() => startEditTax(tax)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>{tax.is_active ? <Button variant="danger" className="h-8 px-2" onClick={() => void deactivate("taxes", tax.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button> : null}</div> },
   ];
   const productColumns: Column<Product>[] = [
     { header: "Product", cell: (product) => <><span className="font-medium">{product.name}</span><span className="ml-2 text-xs text-muted">{product.type.replace("_", " ").toLowerCase()}</span></> },
     { header: "Sales price", numeric: true, cell: (product) => formatMoney(product.sales_price) },
     { header: "Tax", cell: (product) => product.tax_name ?? "—" },
     { header: "Status", cell: (product) => activeLabel(product.is_active) },
+    { header: "", cell: (product) => <Button variant="ghost" className="h-8 px-2" onClick={() => startEditProduct(product)}><Pencil className="h-3.5 w-3.5" /> Edit</Button> },
     { header: "Variants", cell: (product) => <Button variant="ghost" className="h-8 px-2" onClick={() => void toggleVariants(product.id)}><Layers className="h-3.5 w-3.5" /> Manage</Button> },
     { header: "", cell: (product) => product.is_active ? <Button variant="danger" className="h-8 px-2" onClick={() => void deactivate("products", product.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button> : null },
   ];
@@ -233,7 +309,7 @@ export default function CatalogPage() {
     { header: "Minimum quantity", numeric: true, cell: (plan) => plan.min_quantity },
     { header: "Tax", cell: (plan) => plan.tax_name ?? "—" },
     { header: "Status", cell: (plan) => activeLabel(plan.is_active) },
-    { header: "", cell: (plan) => plan.is_active ? <Button variant="danger" className="h-8 px-2" onClick={() => void deactivate("plans", plan.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button> : null },
+    { header: "", cell: (plan) => <div className="flex items-center gap-2"><Button variant="ghost" className="h-8 px-2" onClick={() => startEditPlan(plan)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>{plan.is_active ? <Button variant="danger" className="h-8 px-2" onClick={() => void deactivate("plans", plan.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button> : null}</div> },
   ];
 
   return (
@@ -242,12 +318,12 @@ export default function CatalogPage() {
         eyebrow="Admin console"
         title="Catalog"
         subtitle="Manage the products, pricing plans and tax rules used when preparing subscriptions."
-        action={<Button onClick={() => setShowForm((visible) => !visible)} icon={<Plus className="h-4 w-4" />}>{showForm ? "Close form" : "New item"}</Button>}
+        action={<Button onClick={() => { setEditTarget(null); setShowForm((visible) => !visible); }} icon={<Plus className="h-4 w-4" />}>{showForm ? "Close form" : "New item"}</Button>}
       />
 
       <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Catalogue sections">
         {(["products", "plans", "taxes"] as Tab[]).map((item) => (
-          <Button key={item} variant={tab === item ? "primary" : "secondary"} onClick={() => { setTab(item); setShowForm(false); setNotice(""); }}>
+          <Button key={item} variant={tab === item ? "primary" : "secondary"} onClick={() => { setTab(item); setShowForm(false); setEditTarget(null); setNotice(""); }}>
             {item[0].toUpperCase() + item.slice(1)}
           </Button>
         ))}
@@ -260,7 +336,7 @@ export default function CatalogPage() {
 
       {showForm && (
         <Panel className="mb-6 p-5">
-          <PanelHeader title={`Create ${tab === "taxes" ? "tax rule" : tab === "products" ? "product" : "subscription plan"}`} />
+          <PanelHeader title={`${editTarget ? "Edit" : "Create"} ${tab === "taxes" ? "tax rule" : tab === "products" ? "product" : "subscription plan"}`} />
           <form onSubmit={(event) => void createItem(event)} className="mt-5 space-y-4">
             {tab === "taxes" && (
               <div className="grid gap-4 md:grid-cols-2">
@@ -278,7 +354,7 @@ export default function CatalogPage() {
                 <Input label="Cost price (₹)" type="number" min="0" step="0.01" value={productCost} onChange={(event) => setProductCost(event.target.value)} />
                 <Select label="Tax rule" value={productTax} onChange={(event) => setProductTax(event.target.value)} required>
                   <option value="">Choose a tax rule</option>
-                  {taxes.filter((tax) => tax.is_active).map((tax) => <option key={tax.id} value={tax.id}>{tax.name} ({(tax.rate_bps / 100).toFixed(2)}%)</option>)}
+                  {taxes.filter((tax) => tax.is_active || Number(productTax) === tax.id).map((tax) => <option key={tax.id} value={tax.id}>{tax.name} ({(tax.rate_bps / 100).toFixed(2)}%){!tax.is_active ? " · inactive" : ""}</option>)}
                 </Select>
               </div>
             )}
@@ -295,7 +371,7 @@ export default function CatalogPage() {
                   <Input label="Available until (optional)" type="date" value={planTo} onChange={(event) => setPlanTo(event.target.value)} />
                   <Select label="Tax rule (required for a fee)" value={planTax} onChange={(event) => setPlanTax(event.target.value)}>
                     <option value="">No tax rule</option>
-                    {taxes.filter((tax) => tax.is_active).map((tax) => <option key={tax.id} value={tax.id}>{tax.name} ({(tax.rate_bps / 100).toFixed(2)}%)</option>)}
+                    {taxes.filter((tax) => tax.is_active || Number(planTax) === tax.id).map((tax) => <option key={tax.id} value={tax.id}>{tax.name} ({(tax.rate_bps / 100).toFixed(2)}%){!tax.is_active ? " · inactive" : ""}</option>)}
                   </Select>
                 </div>
                 <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
@@ -307,8 +383,8 @@ export default function CatalogPage() {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button type="submit" loading={saving}>Create {tab === "taxes" ? "tax" : tab === "products" ? "product" : "plan"}</Button>
+              <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setEditTarget(null); }}>Cancel</Button>
+              <Button type="submit" loading={saving}>{editTarget ? "Save changes" : `Create ${tab === "taxes" ? "tax" : tab === "products" ? "product" : "plan"}`}</Button>
             </div>
           </form>
         </Panel>
@@ -335,7 +411,7 @@ export default function CatalogPage() {
                   {variants.map((variant) => (
                     <div key={variant.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                       <div><span className="font-medium">{variant.attribute}: {variant.value}</span><span className="ml-3 num text-muted">{formatMoney(variant.extra_price)}</span>{!variant.is_active && <span className="ml-2 text-xs text-muted">Inactive</span>}</div>
-                      {variant.is_active && <Button variant="danger" className="h-8 px-2" onClick={() => void deactivateVariant(variant.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button>}
+                      {variant.is_active && <div className="flex items-center gap-2"><Button variant="ghost" className="h-8 px-2" onClick={() => startEditVariant(variant)}><Pencil className="h-3.5 w-3.5" /> Edit</Button><Button variant="danger" className="h-8 px-2" onClick={() => void deactivateVariant(variant.id)}><Trash2 className="h-3.5 w-3.5" /> Deactivate</Button></div>}
                     </div>
                   ))}
                 </div>
@@ -344,7 +420,7 @@ export default function CatalogPage() {
                 <Input label="Attribute" value={variantAttribute} onChange={(event) => setVariantAttribute(event.target.value)} required maxLength={100} />
                 <Input label="Value" value={variantValue} onChange={(event) => setVariantValue(event.target.value)} required maxLength={150} />
                 <Input label="Extra price (₹)" type="number" min="0" step="0.01" value={variantPrice} onChange={(event) => setVariantPrice(event.target.value)} required />
-                <div className="md:col-span-3 flex justify-end"><Button type="submit" loading={saving}>Add variant</Button></div>
+                <div className="md:col-span-3 flex justify-end"><Button type="submit" loading={saving}>{editingVariantId === null ? "Add variant" : "Save variant"}</Button>{editingVariantId !== null && <Button type="button" variant="secondary" onClick={() => { setEditingVariantId(null); setVariantAttribute(""); setVariantValue(""); setVariantPrice("0"); }}>Cancel edit</Button>}</div>
               </form>
             </div>
           )}
