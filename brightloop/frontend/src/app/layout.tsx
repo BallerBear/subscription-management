@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import AppShell from "@/components/AppShell";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Brightloop",
-  description: "Subscription billing workspace",
+  description: "Subscription billing for Brightloop customers and staff",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

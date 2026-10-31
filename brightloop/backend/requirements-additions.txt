@@ -1,0 +1,7 @@
+# Add any of these that are missing from backend/requirements.txt
+fastapi
+uvicorn[standard]
+psycopg[binary,pool]
+pyjwt
+bcrypt
+python-dotenv
