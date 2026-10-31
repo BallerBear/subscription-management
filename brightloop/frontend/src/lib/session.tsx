@@ -7,10 +7,6 @@ import { PREVIEW, homeFor, previewUsers, type Role, type SessionUser } from "./p
 const Ctx = createContext<SessionUser | null>(null);
 export const useUser = () => useContext(Ctx)!;
 
-/**
- * Checks the current bearer token and protects each role-specific workspace.
- * This is a frontend navigation guard; the API independently enforces roles.
- */
 export function RoleGuard({ role, children }: { role: Role; children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -41,7 +37,12 @@ export function RoleGuard({ role, children }: { role: Role; children: ReactNode 
   return <Ctx.Provider value={user}>{children}</Ctx.Provider>;
 }
 
-export function logout(router: ReturnType<typeof useRouter>) {
+export async function logout(router: ReturnType<typeof useRouter>) {
+  try {
+    await apiRequest("/auth/logout", { method: "POST" });
+  } catch {
+    // Clear the local token even if the server cannot be reached.
+  }
   clearAccessToken();
   sessionStorage.removeItem("preview_role");
   router.replace("/login");

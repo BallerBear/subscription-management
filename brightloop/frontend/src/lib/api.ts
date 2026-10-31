@@ -1,7 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 const ACCESS_TOKEN_KEY = "brightloop_access_token";
 
-/** Normalized API error supporting FastAPI's { detail } and field validation errors. */
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -30,6 +29,13 @@ export function clearAccessToken(): void {
 
 function validationDetails(detail: unknown): { message?: string; fields?: Record<string, string> } {
   if (typeof detail === "string") return { message: detail };
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const nested = detail as { message?: unknown; fields?: Record<string, string> };
+    return {
+      message: typeof nested.message === "string" ? nested.message : undefined,
+      fields: nested.fields,
+    };
+  }
   if (!Array.isArray(detail)) return {};
 
   const fields: Record<string, string> = {};
@@ -82,12 +88,12 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     const payload = typeof body === "object" && body !== null
       ? body as { detail?: unknown; message?: unknown; fields?: Record<string, string> }
       : undefined;
-    const validation = validationDetails(payload?.detail);
-    const message = validation.message
+    const detail = validationDetails(payload?.detail);
+    const message = detail.message
       ?? (typeof payload?.message === "string" ? payload.message : undefined)
       ?? (typeof body === "string" && body ? body : undefined)
       ?? `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, payload?.fields ?? validation.fields);
+    throw new ApiError(message, response.status, payload?.fields ?? detail.fields);
   }
 
   return body as T;
