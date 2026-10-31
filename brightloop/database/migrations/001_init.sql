@@ -1,5 +1,3 @@
--- Initial database migration.
--- Add domain tables here as the billing schema is defined.
 -- =============================================================================
 -- 001_init.sql  --  Brightloop Subscription Management System
 -- PostgreSQL 14+ (designed on 16)
