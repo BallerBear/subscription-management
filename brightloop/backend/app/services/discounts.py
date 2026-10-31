@@ -190,29 +190,31 @@ def apply_discounts(
         if line["discount_amount"] > 0
     ]
 
-    if changed_lines:
-        conn.executemany(
-            """
-            UPDATE invoice_lines
-               SET discount_amount = %s
-             WHERE id = %s
-            """,
-            [
-                (line["discount_amount"], line["id"])
-                for line in changed_lines
-            ],
-        )
+    # executemany lives on the cursor, not the connection (psycopg 3).
+    with conn.cursor() as cur:
+        if changed_lines:
+            cur.executemany(
+                """
+                UPDATE invoice_lines
+                   SET discount_amount = %s
+                 WHERE id = %s
+                """,
+                [
+                    (line["discount_amount"], line["id"])
+                    for line in changed_lines
+                ],
+            )
 
-    conn.executemany(
-        """
-        INSERT INTO discount_redemptions (
-            discount_id,
-            invoice_id,
-            amount
+        cur.executemany(
+            """
+            INSERT INTO discount_redemptions (
+                discount_id,
+                invoice_id,
+                amount
+            )
+            VALUES (%s, %s, %s)
+            """,
+            redemptions,
         )
-        VALUES (%s, %s, %s)
-        """,
-        redemptions,
-    )
 
     return len(redemptions)
