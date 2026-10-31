@@ -5,6 +5,7 @@ from app.core.db import close_pool, connection
 from app.core.errors import register_error_handlers
 from app.routers import (
     auth,
+    billing,
     catalog,
     clock,
     discounts,
@@ -25,6 +26,7 @@ for router_module in (
     users,
     catalog,
     subscriptions,
+    billing,
     invoices,
     payments,
     discounts,
