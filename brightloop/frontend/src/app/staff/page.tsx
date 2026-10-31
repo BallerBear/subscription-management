@@ -1,24 +1,26 @@
 "use client";
 import { Check, Play } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@/lib/useQuery";
 import { InvoiceList } from "@/components/billing/InvoiceList";
 import { Button } from "@/components/Button";
 import { PageHeader, Panel } from "@/components/Panel";
 import { CountUp, Stagger, StaggerItem } from "@/components/motion";
 import { apiRequest } from "@/lib/api";
-import { PREVIEW } from "@/lib/preview";
 import { useUser } from "@/lib/session";
 
 // Staff home is a work queue, not a report: what needs doing today.
 export default function StaffToday() {
   const user = useUser();
-  const [drafts, setDrafts] = useState(5);
+  const q = useQuery<{ total: number }>("/invoices?status=DRAFT&page_size=1");
+  const drafts = q.data?.total ?? 0;
+  const [billing, setBilling] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function confirmAll() {
     setBusy(true);
-    try { await apiRequest("/invoices/confirm-drafts", { method: "POST" }); setDrafts(0); }
-    catch { if (PREVIEW) { await new Promise((r) => setTimeout(r, 600)); setDrafts(0); } }
+    try { await apiRequest("/invoices/confirm-drafts", { method: "POST" }); q.refetch(); }
+    catch { /* the count stays, so the screen never lies */ }
     setBusy(false);
   }
 
@@ -37,7 +39,14 @@ export default function StaffToday() {
           <p className="text-xs uppercase tracking-[0.14em] text-muted">Billing</p>
           <p className="mt-3 font-display text-2xl">Create this period&apos;s invoices.</p>
           <p className="mt-1 text-sm text-muted">Safe to run any time; already-billed periods are skipped.</p>
-          <Button className="mt-5" icon={<Play className="h-4 w-4" />} onClick={() => apiRequest("/billing/run", { method: "POST", body: "{}" }).catch(() => {})}>Run billing</Button>
+          <Button className="mt-5" icon={<Play className="h-4 w-4" />} onClick={async () => {
+            try {
+              const r = await apiRequest<{ created: number; up_to_date: number }>("/billing/run", { method: "POST", body: "{}" });
+              setBilling(r.created === 0 ? `Nothing to bill. ${r.up_to_date} subscriptions already up to date.` : `${r.created} new invoices created.`);
+              q.refetch();
+            } catch (e) { setBilling(e instanceof Error ? e.message : "Billing failed. Nothing was changed."); }
+          }}>Run billing</Button>
+          {billing && <p role="status" className="mt-3 text-sm text-accent">{billing}</p>}
         </Panel>
       </StaggerItem>
       <StaggerItem className="mt-8">

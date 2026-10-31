@@ -5,24 +5,43 @@ from app.core.db import close_pool, connection
 from app.core.errors import register_error_handlers
 from app.routers import (
     auth,
+    billing,
     catalog,
     clock,
+    customers,
     discounts,
     events,
     invoices,
+    lookups,
+    meta,
     payments,
     portal,
     reports,
     subscriptions,
     users,
 )
+from app.services.common import RuleError
 
 app = FastAPI(title="Brightloop API", version="0.1.0")
 register_error_handlers(app)
 
+
+@app.exception_handler(RuleError)
+async def _rule_error(request, exc: RuleError):
+    # Services raise RuleError (no FastAPI import); this turns it into the standard error body.
+    return JSONResponse(
+        {"message": exc.message, "fields": {exc.field: exc.message} if exc.field else {}},
+        status_code=exc.status,
+    )
+
+
 for router_module in (
     auth,
     users,
+    customers,
+    lookups,
+    meta,
+    billing,
     catalog,
     subscriptions,
     invoices,

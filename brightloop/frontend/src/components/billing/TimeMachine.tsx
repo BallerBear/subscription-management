@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { CalendarPlus, Play } from "lucide-react";
 import { Button } from "../Button";
@@ -15,7 +15,9 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(iso) + n * 864e5
 
 /** Admin only. Move "today", run billing, run it again, and watch the second run create nothing. */
 export function TimeMachine() {
-  const [today, setToday] = useState("2026-10-31");
+  const [today, setToday] = useState("");
+  const [picked, setPicked] = useState("");
+  useEffect(() => { apiRequest<{ today: string }>("/clock").then((r) => { setToday(r.today); setPicked(r.today); }).catch(() => setToday("2026-10-31")); }, []);
   const [run, setRun] = useState<Run | null>(null);
   const [runs, setRuns] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -32,6 +34,15 @@ export function TimeMachine() {
       else setError(e instanceof ApiError ? e.message : "Could not move the clock.");
     }
     setPulse((p) => p + 1); setRun(null); setRuns(0);
+  }
+
+  async function setExact() {
+    if (!picked) return;
+    setError("");
+    try {
+      const r = await apiRequest<{ today: string }>("/clock", { method: "PUT", body: JSON.stringify({ today: picked }) });
+      setToday(r.today); setPulse((p) => p + 1); setRun(null); setRuns(0);
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not set the date."); }
   }
 
   async function runBilling() {
@@ -56,13 +67,20 @@ export function TimeMachine() {
           <AnimatePresence mode="wait">
             <motion.p key={today + pulse} initial={{ opacity: 0, y: 18, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               exit={{ opacity: 0, y: -18 }} transition={{ duration: 0.45, ease: EASE }} className="num mt-3 text-5xl tracking-tight">
-              {formatDate(today)}
+              {today ? formatDate(today) : "..."}
             </motion.p>
           </AnimatePresence>
           <div className="mt-8 flex flex-wrap gap-2">
             {[[1, "+1 day"], [7, "+1 week"], [30, "+1 month"], [90, "+3 months"]].map(([d, label]) => (
               <Button key={label} variant="secondary" icon={<CalendarPlus className="h-4 w-4" />} onClick={() => advance(d as number)}>{label}</Button>
             ))}
+          </div>
+          <div className="mt-6 flex items-end gap-2 border-t border-line pt-6">
+            <label className="flex-1 text-sm font-medium">Or set an exact date
+              <input type="date" value={picked} onChange={(e) => setPicked(e.target.value)}
+                className="num mt-1.5 h-10 w-full rounded border border-line bg-surface px-3 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20" />
+            </label>
+            <Button variant="secondary" onClick={setExact}>Set date</Button>
           </div>
         </div>
       </Panel>

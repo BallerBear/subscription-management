@@ -1,5 +1,3 @@
-import { Stub } from "@/components/Stub";
-
-export default function Page() {
-  return <Stub eyebrow="People" title="Customers" body="Customer list and profiles land here." />;
-}
+"use client";
+import { CustomersPage } from "@/components/pages/CustomersPage";
+export default function Page() { return <CustomersPage />; }
