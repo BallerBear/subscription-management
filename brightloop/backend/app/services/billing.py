@@ -57,7 +57,7 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
                SET status = 'CLOSED'
               FROM plans AS p
              WHERE p.id = s.plan_id
-               AND s.status = 'ACTIVE'
+               AND s.status IN ('ACTIVE', 'PAUSED')
                AND p.auto_close = TRUE
                AND s.expiry_date <= %s
             RETURNING s.id
@@ -111,8 +111,10 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
                         sub["customer_id"],
                         current,
                         period_end,
-                        today,
-                        today + timedelta(days=sub["payment_days"]),
+                        # issue_date = period start (not today), so a backdated
+                        # catch-up invoice is honestly overdue.
+                        current,
+                        current + timedelta(days=sub["payment_days"]),
                     )
                 )
 
@@ -161,7 +163,8 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
             created_invoice_ids.extend(row["id"] for row in inserted)
             skipped += len(batch) - len(inserted)
 
-        # Copy the recurring plan fee and snapshotted subscription lines.
+        # Copy the snapshotted subscription lines. The plan fee is already one
+        # of them (CLAUDE.md 8.1 step 3), so it must NOT be added again here.
         # PostgreSQL triggers calculate invoice totals automatically.
         if created_invoice_ids:
             conn.execute(
@@ -178,24 +181,6 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
                 )
                 SELECT
                     i.id,
-                    NULL,
-                    'Plan fee - ' || p.name,
-                    1,
-                    p.price,
-                    0,
-                    t.name,
-                    t.rate_bps
-                FROM invoices AS i
-                JOIN subscriptions AS s ON s.id = i.subscription_id
-                JOIN plans AS p ON p.id = s.plan_id
-                JOIN taxes AS t ON t.id = p.tax_id
-                WHERE i.id = ANY(%s)
-                  AND p.price > 0
-
-                UNION ALL
-
-                SELECT
-                    i.id,
                     sl.product_id,
                     sl.description,
                     sl.quantity,
@@ -208,7 +193,7 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
                   ON sl.subscription_id = i.subscription_id
                 WHERE i.id = ANY(%s)
                 """,
-                (created_invoice_ids, created_invoice_ids),
+                (created_invoice_ids,),
             )
 
             # Discounts must be applied while invoices are still DRAFT.
@@ -228,14 +213,16 @@ def run_billing(user_id: int, auto_confirm: bool = True) -> dict:
         # Advance every processed subscription, including those whose
         # invoice periods were skipped because of the unique constraint.
         if next_dates:
-            conn.executemany(
-                """
-                UPDATE subscriptions
-                   SET next_billing_date = %s
-                 WHERE id = %s
-                """,
-                next_dates,
-            )
+            # executemany lives on the cursor, not the connection (psycopg 3).
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    UPDATE subscriptions
+                       SET next_billing_date = %s
+                     WHERE id = %s
+                    """,
+                    next_dates,
+                )
 
         up_to_date = conn.execute(
             """

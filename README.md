@@ -108,7 +108,6 @@ All three share one password: `Brightloop@123`
 | Customer | `customer@kaveri.example.com` |
 
 The customer account belongs to Kaveri Textiles, so it sees only Kaveri's subscriptions and invoices.
-
 ![Brightloop login screen](screenshots/login.png)
 
 A fresh install has no admin at all. If you start from an empty database, set `ADMIN_BOOTSTRAP_TOKEN` in `.env` and call `POST /auth/bootstrap-admin` once. It refuses to run again after an admin exists.
