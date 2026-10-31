@@ -76,3 +76,13 @@ export const subscriptionSchema = z.object({
   })).min(1, "Add at least one product"),
 }).refine((v) => v.expiry_date > v.start_date, { path: ["expiry_date"], message: "Expiry date must be after the start date" });
 export type SubscriptionValues = z.infer<typeof subscriptionSchema>;
+
+// ---- Password reset (same rules as backend/app/schemas/auth.py) ----
+export const forgotPasswordSchema = z.object({ email: emailField });
+export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  password: passwordField,
+  confirm: z.string().min(1, "Type the new password again"),
+}).refine((v) => v.password === v.confirm, { path: ["confirm"], message: "The two passwords do not match" });
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
