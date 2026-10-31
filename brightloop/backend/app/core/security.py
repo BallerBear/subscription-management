@@ -1,38 +1,53 @@
-"""Password hashing and JWT helpers. No database or FastAPI in here."""
+"""Password hashing and JWT helpers shared by bearer and cookie sessions."""
 
-import os
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
 
-import app.core.config  # noqa: F401  (makes sure .env has been loaded)
+from app.core.config import COOKIE_SECURE, JWT_SECRET
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALG = "HS256"
-TOKEN_HOURS = 24
-COOKIE_NAME = "access_token"
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"  # true in production (https)
+TOKEN_ALGORITHM = JWT_ALG
+TOKEN_HOURS = 12
+TOKEN_LIFETIME = timedelta(hours=TOKEN_HOURS)
+COOKIE_NAME = "brightloop_token"
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return bcrypt.checkpw(password.encode(), password_hash.encode())
-    except ValueError:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except (ValueError, TypeError):
         return False
 
 
 def create_token(user_id: int, role: str) -> str:
     if not JWT_SECRET:
         raise RuntimeError("JWT_SECRET is not set. Copy .env.example to .env")
-    expires = datetime.now(timezone.utc) + timedelta(hours=TOKEN_HOURS)
-    return jwt.encode({"sub": str(user_id), "role": role, "exp": expires}, JWT_SECRET, algorithm=JWT_ALG)
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": str(user_id), "role": role, "iat": now, "exp": now + TOKEN_LIFETIME},
+        JWT_SECRET,
+        algorithm=JWT_ALG,
+    )
+
+
+def create_access_token(user: dict) -> str:
+    return create_token(int(user["id"]), str(user["role"]))
 
 
 def decode_token(token: str) -> dict:
-    """Raises jwt.PyJWTError if the token is bad or expired."""
+    """Decode a signed access token; invalid/expired tokens raise PyJWTError."""
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+
+
+def decode_access_token(token: str) -> dict:
+    """Compatibility helper used by bearer-token dependencies."""
+    payload = decode_token(token)
+    if not payload.get("sub") or not payload.get("role"):
+        raise jwt.InvalidTokenError("Missing required token claims")
+    return payload

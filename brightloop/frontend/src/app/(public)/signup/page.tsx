@@ -7,8 +7,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AuthFrame } from "@/components/AuthFrame";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Field";
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, apiRequest, setAccessToken } from "@/lib/api";
+import { homeFor, type SessionUser } from "@/lib/preview";
 import { signupSchema, type SignupValues } from "@/lib/validators";
+
+type AuthResponse = { user: SessionUser; access_token: string; token_type: "bearer" };
 
 export default function SignupPage() {
   const router = useRouter();
@@ -21,11 +24,21 @@ export default function SignupPage() {
   async function onSubmit(values: SignupValues) {
     setFormError("");
     try {
-      await apiRequest("/auth/signup", { method: "POST", body: JSON.stringify(values) });
-      router.push("/portal"); // signup always creates a CUSTOMER
-    } catch (e) {
-      if (e instanceof ApiError && e.fields) Object.entries(e.fields).forEach(([k, m]) => setError(k as keyof SignupValues, { message: m }));
-      else setFormError(e instanceof Error ? e.message : "Could not create the account. Try again.");
+      const result = await apiRequest<AuthResponse>("/auth/register", {
+        method: "POST",
+        // The registration API requires a customer contact name as well as the account name.
+        body: JSON.stringify({ ...values, contact_name: values.name }),
+      });
+      setAccessToken(result.access_token);
+      router.push(homeFor(result.user.role));
+    } catch (error) {
+      if (error instanceof ApiError && error.fields) {
+        Object.entries(error.fields).forEach(([field, message]) => {
+          setError(field as keyof SignupValues, { message });
+        });
+      } else {
+        setFormError(error instanceof Error ? error.message : "Could not create the account. Try again.");
+      }
     }
   }
 

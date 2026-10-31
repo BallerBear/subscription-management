@@ -23,13 +23,17 @@ def get_clock():
     return clock_service.get_clock()
 
 
-@router.put("", dependencies=[Depends(require_role("ADMIN"))])
-def set_clock(payload: SetClockRequest):
-    # Authentication integration must provide the real user_id.
-    # This temporary placeholder is intentionally not fabricated.
-    raise NotImplementedError("Pass the authenticated admin user_id once auth is wired")
+@router.put("")
+def set_clock(
+    payload: SetClockRequest,
+    admin: dict = Depends(require_role("ADMIN")),
+):
+    return clock_service.set_clock(admin["id"], payload.today)
 
 
-@router.post("/advance", dependencies=[Depends(require_role("ADMIN"))])
-def advance_clock(payload: AdvanceClockRequest):
-    raise NotImplementedError("Pass the authenticated admin user_id once auth is wired")
+@router.post("/advance")
+def advance_clock(
+    payload: AdvanceClockRequest,
+    admin: dict = Depends(require_role("ADMIN")),
+):
+    return clock_service.advance_clock(admin["id"], payload.days, payload.months)

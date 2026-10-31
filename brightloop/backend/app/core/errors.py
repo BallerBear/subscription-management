@@ -1,21 +1,11 @@
-"""Friendly errors. Every error the API returns has the same shape:
-
-    {"message": "Human sentence", "fields": {"email": "Human sentence"}}
-
-`fields` is empty when the problem is not tied to one input.
-
-Usage in any router:
-    raise friendly_error("Plan is closed", 409)
-    raise friendly_error("Email already used", 409, field="email")
-"""
+"""Consistent, field-aware API errors and database constraint translations."""
 
 import psycopg.errors as pgerr
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-# DB constraint name -> (field or None, sentence). Teammates: add yours here.
 CONSTRAINT_MESSAGES: dict[str, tuple[str | None, str]] = {
     "users_email_unique": ("email", "An account with this email already exists"),
     "products_name_unique": ("name", "A product with this name already exists"),
@@ -28,7 +18,9 @@ CONSTRAINT_MESSAGES: dict[str, tuple[str | None, str]] = {
 }
 
 
-def friendly_error(message: str, status: int = 400, field: str | None = None) -> HTTPException:
+def friendly_error(message: str, status: int = 400, field: str | None = None):
+    from fastapi import HTTPException
+
     return HTTPException(
         status_code=status,
         detail={"message": message, "fields": {field: message} if field else {}},
@@ -40,7 +32,6 @@ def _body(message: str, fields: dict[str, str] | None = None) -> dict:
 
 
 def _clean(err: dict) -> str:
-    """Turn a pydantic error into a sentence a customer can act on."""
     kind = err.get("type", "")
     ctx = err.get("ctx") or {}
     if kind == "missing":
@@ -60,9 +51,9 @@ def _clean(err: dict) -> str:
 
 async def _validation_handler(request: Request, exc: RequestValidationError):
     fields: dict[str, str] = {}
-    for e in exc.errors():
-        path = [str(p) for p in e["loc"] if p not in ("body", "query", "path")]
-        fields.setdefault(".".join(path) or "_", _clean(e))
+    for error in exc.errors():
+        path = [str(part) for part in error["loc"] if part not in ("body", "query", "path")]
+        fields.setdefault(".".join(path) or "_", _clean(error))
     return JSONResponse(_body("Please fix the highlighted fields", fields), status_code=422)
 
 
@@ -72,7 +63,7 @@ async def _http_handler(request: Request, exc: StarletteHTTPException):
         content = {"message": detail["message"], "fields": detail.get("fields", {})}
     else:
         content = _body(str(detail))
-    return JSONResponse(content, status_code=exc.status_code)
+    return JSONResponse(content, status_code=exc.status_code, headers=exc.headers)
 
 
 def _constraint_response(exc: pgerr.Error, status: int, fallback: str):
@@ -82,9 +73,9 @@ def _constraint_response(exc: pgerr.Error, status: int, fallback: str):
 
 
 async def _db_rule_handler(request: Request, exc: pgerr.RaiseException):
-    # Messages raised by our triggers are already written for humans.
     return JSONResponse(
-        _body(exc.diag.message_primary or "That action isn't allowed right now"), status_code=409
+        _body(exc.diag.message_primary or "That action isn't allowed right now"),
+        status_code=409,
     )
 
 
@@ -112,3 +103,7 @@ def register_handlers(app: FastAPI) -> None:
     app.add_exception_handler(pgerr.ForeignKeyViolation, _fk_handler)
     app.add_exception_handler(pgerr.CheckViolation, _check_handler)
     app.add_exception_handler(Exception, _unhandled)
+
+
+def register_error_handlers(app: FastAPI) -> None:
+    register_handlers(app)

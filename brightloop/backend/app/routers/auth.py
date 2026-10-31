@@ -1,68 +1,47 @@
-import re
+import secrets
 
-from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi import APIRouter, Depends, Response, status
 
+from app.core.config import ADMIN_BOOTSTRAP_TOKEN
 from app.core.db import connection, transaction
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.core.errors import friendly_error
 from app.core.security import (
     COOKIE_NAME,
     COOKIE_SECURE,
     TOKEN_HOURS,
-    create_token,
+    create_access_token,
     hash_password,
     verify_password,
 )
+from app.schemas.auth import BootstrapAdminRequest, LoginRequest, RegisterRequest, StaffCreateRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Same pattern as the CHECK constraint in the database.
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+def _public_user(user: dict) -> dict:
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+    }
 
 
-def _clean_email(value: str) -> str:
-    value = value.strip().lower()
-    if not EMAIL_RE.match(value):
-        raise ValueError("Enter a valid email address")
-    return value
-
-
-class SignupIn(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    name: str = Field(min_length=2, max_length=100)
-    email: str
-    company_name: str = Field(min_length=1, max_length=150)
-    password: str = Field(min_length=8, max_length=72)
-
-    @field_validator("email")
-    @classmethod
-    def _email_ok(cls, v: str) -> str:
-        return _clean_email(v)
-
-    @field_validator("password")
-    @classmethod
-    def _password_bytes(cls, v: str) -> str:
-        if len(v.encode()) > 72:
-            raise ValueError("Password is too long")
-        return v
-
-
-class LoginIn(BaseModel):
-    email: str
-    password: str = Field(min_length=1)
-
-    @field_validator("email")
-    @classmethod
-    def _email_ok(cls, v: str) -> str:
-        return _clean_email(v)
+def _auth_response(user: dict) -> dict:
+    public = _public_user(user)
+    return {
+        "user": public,
+        **public,
+        "access_token": create_access_token(user),
+        "token_type": "bearer",
+    }
 
 
 def _set_cookie(response: Response, user: dict) -> None:
     response.set_cookie(
         COOKIE_NAME,
-        create_token(user["id"], user["role"]),
+        create_access_token(user),
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
@@ -71,48 +50,111 @@ def _set_cookie(response: Response, user: dict) -> None:
     )
 
 
-@router.post("/signup", status_code=201)
-def signup(body: SignupIn, response: Response):
-    # Public signup can only ever create a CUSTOMER (the database default).
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/signup", status_code=status.HTTP_201_CREATED, include_in_schema=False)
+def register(payload: RegisterRequest, response: Response) -> dict:
+    """Create a customer profile. /signup is retained as a compatibility alias."""
     with transaction() as conn:
-        taken = conn.execute("SELECT 1 FROM users WHERE lower(email) = %s", (body.email,)).fetchone()
+        taken = conn.execute(
+            "SELECT 1 FROM users WHERE lower(email) = lower(%s)",
+            (payload.email,),
+        ).fetchone()
         if taken:
             raise friendly_error("An account with this email already exists", 409, "email")
+
         user = conn.execute(
-            "INSERT INTO users (email, password_hash, name) VALUES (%s, %s, %s) "
-            "RETURNING id, email, name, role",
-            (body.email, hash_password(body.password), body.name),
+            """
+            INSERT INTO users (email, password_hash, name, role)
+            VALUES (%s, %s, %s, 'CUSTOMER')
+            RETURNING id, email, name, role
+            """,
+            (payload.email, hash_password(payload.password), payload.name),
         ).fetchone()
         conn.execute(
-            "INSERT INTO customers (user_id, company_name, contact_name, email) VALUES (%s, %s, %s, %s)",
-            (user["id"], body.company_name, body.name, body.email),
+            """
+            INSERT INTO customers (user_id, company_name, contact_name, email, phone)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                user["id"],
+                payload.company_name,
+                payload.contact_name or payload.name,
+                payload.email,
+                payload.phone,
+            ),
         )
+
     _set_cookie(response, user)
-    return user
+    return _auth_response(user)
 
 
 @router.post("/login")
-def login(body: LoginIn, response: Response):
+def login(payload: LoginRequest, response: Response) -> dict:
     with connection() as conn:
         user = conn.execute(
-            "SELECT id, email, name, role, password_hash, is_active FROM users WHERE lower(email) = %s",
-            (body.email,),
+            """
+            SELECT id, email, name, role, password_hash, is_active
+              FROM users
+             WHERE lower(email) = lower(%s)
+            """,
+            (payload.email,),
         ).fetchone()
-    # Same message for "no such user" and "wrong password" on purpose.
-    if not user or not verify_password(body.password, user["password_hash"]):
+
+    if user is None or not verify_password(payload.password, user["password_hash"]):
         raise friendly_error("Incorrect email or password", 401)
     if not user["is_active"]:
         raise friendly_error("This account has been disabled. Contact support", 403)
+
     _set_cookie(response, user)
-    return {k: user[k] for k in ("id", "email", "name", "role")}
+    return _auth_response(user)
 
 
 @router.post("/logout")
-def logout(response: Response):
-    response.delete_cookie(COOKIE_NAME, path="/")
+def logout(response: Response) -> dict:
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="lax", secure=COOKIE_SECURE)
     return {"ok": True}
 
 
 @router.get("/me")
-def me(user: dict = Depends(get_current_user)):
-    return user
+def me(user: dict = Depends(get_current_user)) -> dict:
+    return _public_user(user)
+
+
+@router.post("/bootstrap-admin", status_code=status.HTTP_201_CREATED)
+def bootstrap_admin(payload: BootstrapAdminRequest, response: Response) -> dict:
+    if not ADMIN_BOOTSTRAP_TOKEN or not secrets.compare_digest(payload.bootstrap_token, ADMIN_BOOTSTRAP_TOKEN):
+        raise friendly_error("Admin bootstrap is not enabled or the token is incorrect", 403)
+
+    with transaction() as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(728194)")
+        exists = conn.execute("SELECT 1 FROM users WHERE role = 'ADMIN' LIMIT 1").fetchone()
+        if exists:
+            raise friendly_error("An admin account already exists", 409)
+        user = conn.execute(
+            """
+            INSERT INTO users (email, password_hash, name, role)
+            VALUES (%s, %s, %s, 'ADMIN')
+            RETURNING id, email, name, role
+            """,
+            (payload.email, hash_password(payload.password), payload.name),
+        ).fetchone()
+
+    _set_cookie(response, user)
+    return _auth_response(user)
+
+
+@router.post("/staff", status_code=status.HTTP_201_CREATED)
+def create_staff(
+    payload: StaffCreateRequest,
+    admin: dict = Depends(require_role("ADMIN")),
+) -> dict:
+    with transaction(user_id=admin["id"]) as conn:
+        user = conn.execute(
+            """
+            INSERT INTO users (email, password_hash, name, role)
+            VALUES (%s, %s, %s, 'STAFF')
+            RETURNING id, email, name, role
+            """,
+            (payload.email, hash_password(payload.password), payload.name),
+        ).fetchone()
+    return _public_user(user)
