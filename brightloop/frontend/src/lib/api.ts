@@ -1,53 +1,23 @@
-// One place that talks to the backend. Every error comes back as ApiError
-// with a readable message and per-field messages: {"message", "fields"}.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
-
-export type FieldErrors = Record<string, string>;
-
-export type CurrentUser = {
-  id: number;
-  email: string;
-  name: string;
-  role: "ADMIN" | "STAFF" | "CUSTOMER";
-};
-
+/** Error carrying the server's { message, fields } shape (section 10 of the guide). */
 export class ApiError extends Error {
-  status: number;
-  fields: FieldErrors;
-
-  constructor(status: number, message: string, fields: FieldErrors = {}) {
+  constructor(message: string, public status: number, public fields?: Record<string, string>) {
     super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.fields = fields;
   }
 }
 
-type Options = { method?: string; body?: unknown; signal?: AbortSignal };
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
 
-export async function api<T = unknown>(path: string, opts: Options = {}): Promise<T> {
-  const hasBody = opts.body !== undefined;
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method: opts.method ?? (hasBody ? "POST" : "GET"),
-      headers: hasBody ? { "Content-Type": "application/json" } : undefined,
-      body: hasBody ? JSON.stringify(opts.body) : undefined,
-      credentials: "include",
-      signal: opts.signal,
-    });
-  } catch {
-    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  if (!response.ok) {
+    let body: { message?: string; fields?: Record<string, string> } = {};
+    try { body = await response.json(); } catch { /* non-JSON error body */ }
+    throw new ApiError(body.message ?? `Request failed (${response.status})`, response.status, body.fields);
   }
-
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      data?.message ?? "Something went wrong. Please try again.",
-      data?.fields ?? {},
-    );
-  }
-  return data as T;
+  return response.json() as Promise<T>;
 }

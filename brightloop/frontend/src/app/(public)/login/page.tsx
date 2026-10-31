@@ -1,67 +1,65 @@
 "use client";
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import Field from "@/components/Field";
-import { api, ApiError, type CurrentUser } from "@/lib/api";
-import { loginSchema, validate, type Errors } from "@/lib/validators";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowRight } from "lucide-react";
+import { AuthFrame } from "@/components/AuthFrame";
+import { Button } from "@/components/Button";
+import { Input } from "@/components/Field";
+import { ApiError, apiRequest } from "@/lib/api";
+import { PREVIEW, homeFor, type Role, type SessionUser } from "@/lib/preview";
+import { loginSchema, type LoginValues } from "@/lib/validators";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    mode: "onBlur", // validate when leaving a field, and on submit
+  });
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(values: LoginValues) {
     setFormError("");
-    const result = validate(loginSchema, form);
-    if (!result.ok) {
-      setErrors(result.errors);
-      return;
-    }
-    setErrors({});
-    setLoading(true);
     try {
-      await api<CurrentUser>("/auth/login", { body: result.data });
-      window.location.assign("/"); // full reload so the header picks up the new session
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setErrors(err.fields);
-        setFormError(err.message);
-      } else {
-        setFormError("Something went wrong. Please try again.");
-      }
-      setLoading(false);
+      await apiRequest("/auth/login", { method: "POST", body: JSON.stringify(values) });
+      const me = await apiRequest<SessionUser>("/auth/me");
+      router.push(homeFor(me.role)); // the role decides which shell you land in
+    } catch (e) {
+      if (e instanceof ApiError && e.fields) Object.entries(e.fields).forEach(([k, m]) => setError(k as keyof LoginValues, { message: m }));
+      else setFormError(e instanceof Error ? e.message : "Could not sign in. Try again.");
     }
   }
 
+  function previewAs(role: Role) {
+    sessionStorage.setItem("preview_role", role);
+    router.push(homeFor(role));
+  }
+
   return (
-    <section className="auth">
-      <aside className="auth-aside">
-        <h2>Subscriptions that bill themselves.</h2>
-        <p>See your plans, invoices and payments for your Brightloop account in one place.</p>
-      </aside>
-      <form className="auth-form" onSubmit={submit} noValidate>
-        <h1>Log in</h1>
-        {formError && (
-          <p className="form-error" role="alert">
-            {formError}
-          </p>
-        )}
-        <Field label="Email" name="email" type="email" autoComplete="email" value={form.email}
-          onChange={(v) => setForm({ ...form, email: v })} error={errors.email} />
-        <Field label="Password" name="password" type="password" autoComplete="current-password" value={form.password}
-          onChange={(v) => setForm({ ...form, password: v })} error={errors.password} />
-        <button className="btn btn-primary btn-block" disabled={loading}>
-          {loading ? "Logging in…" : "Log in"}
-        </button>
-        <p className="auth-switch">
-          New to Brightloop? <Link href="/signup">Create an account</Link>
-        </p>
+    <AuthFrame title="Welcome back" subtitle="Sign in to your Brightloop workspace.">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+        <Input label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
+        <Input label="Password" type="password" autoComplete="current-password" error={errors.password?.message} {...register("password")} />
+        {formError && <p role="alert" className="text-sm text-danger">{formError}</p>}
+        <Button type="submit" loading={isSubmitting} className="w-full" icon={<ArrowRight className="h-4 w-4" />}>Sign in</Button>
+        <div className="flex justify-between text-sm">
+          <Link href="/signup" className="link-u text-accent">Create an account</Link>
+          <Link href="/forgot-password" className="link-u text-muted">Forgot password?</Link>
+        </div>
       </form>
-    </section>
+
+      {PREVIEW && (
+        <div className="mt-10 border-t border-line pt-6">
+          <p className="mb-3 text-xs uppercase tracking-[0.14em] text-muted">UI preview, no login needed</p>
+          <div className="grid grid-cols-3 gap-2">
+            {(["ADMIN", "STAFF", "CUSTOMER"] as Role[]).map((r) => (
+              <Button key={r} type="button" variant="secondary" className="h-9 px-2 text-xs capitalize" onClick={() => previewAs(r)}>{r.toLowerCase()}</Button>
+            ))}
+          </div>
+        </div>
+      )}
+    </AuthFrame>
   );
 }
