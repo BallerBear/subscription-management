@@ -63,7 +63,7 @@ async def _validation_handler(request: Request, exc: RequestValidationError):
     for e in exc.errors():
         path = [str(p) for p in e["loc"] if p not in ("body", "query", "path")]
         fields.setdefault(".".join(path) or "_", _clean(e))
-    return JSONResponse(422, _body("Please fix the highlighted fields", fields))
+    return JSONResponse(_body("Please fix the highlighted fields", fields), status_code=422)
 
 
 async def _http_handler(request: Request, exc: StarletteHTTPException):
@@ -72,18 +72,20 @@ async def _http_handler(request: Request, exc: StarletteHTTPException):
         content = {"message": detail["message"], "fields": detail.get("fields", {})}
     else:
         content = _body(str(detail))
-    return JSONResponse(exc.status_code, content)
+    return JSONResponse(content, status_code=exc.status_code)
 
 
 def _constraint_response(exc: pgerr.Error, status: int, fallback: str):
     name = exc.diag.constraint_name or ""
     field, message = CONSTRAINT_MESSAGES.get(name, (None, fallback))
-    return JSONResponse(status, _body(message, {field: message} if field else {}))
+    return JSONResponse(_body(message, {field: message} if field else {}), status_code=status)
 
 
 async def _db_rule_handler(request: Request, exc: pgerr.RaiseException):
     # Messages raised by our triggers are already written for humans.
-    return JSONResponse(409, _body(exc.diag.message_primary or "That action isn't allowed right now"))
+    return JSONResponse(
+        _body(exc.diag.message_primary or "That action isn't allowed right now"), status_code=409
+    )
 
 
 async def _unique_handler(request: Request, exc: pgerr.UniqueViolation):
@@ -99,7 +101,7 @@ async def _check_handler(request: Request, exc: pgerr.CheckViolation):
 
 
 async def _unhandled(request: Request, exc: Exception):
-    return JSONResponse(500, _body("Something went wrong on our side. Please try again."))
+    return JSONResponse(_body("Something went wrong on our side. Please try again."), status_code=500)
 
 
 def register_handlers(app: FastAPI) -> None:
