@@ -88,3 +88,22 @@ class BootstrapAdminRequest(BaseModel):
     @classmethod
     def strong_password(cls, value: str) -> str:
         return _validate_password(value)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return _validate_email(value)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        return _validate_password(value)

@@ -460,7 +460,6 @@ def test_cookie_is_named_brightloop_token(client):
     assert "brightloop_token=" in r.headers["set-cookie"]
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN GAP (CLAUDE.md s9): forgot-password / reset-password not built yet.")
 def test_forgot_password_never_reveals_whether_the_email_exists(client):
     known = _signup_body()
     client.post("/auth/signup", json=known)

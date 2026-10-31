@@ -17,8 +17,8 @@ export function Table<T extends { id: number | string }>({ columns, rows }: { co
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
-            {columns.map((c) => (
-              <th key={c.header} scope="col" className={cn("px-5 py-3 font-medium", c.numeric && "text-right")}>
+            {columns.map((c, ci) => (
+              <th key={`${ci}-${c.header}`} scope="col" className={cn("px-5 py-3 font-medium", c.numeric && "text-right")}>
                 {c.header}
               </th>
             ))}
@@ -34,8 +34,8 @@ export function Table<T extends { id: number | string }>({ columns, rows }: { co
               transition={{ duration: 0.45, delay: Math.min(i, 12) * 0.04, ease: EASE }}
               className="border-b border-line/70 transition-colors last:border-0 hover:bg-accent-soft/50"
             >
-              {columns.map((c) => (
-                <td key={c.header} className={cn("px-5 py-3.5", c.numeric && "num text-right")}>
+              {columns.map((c, ci) => (
+                <td key={`${ci}-${c.header}`} className={cn("px-5 py-3.5", c.numeric && "num text-right")}>
                   {c.cell(row)}
                 </td>
               ))}

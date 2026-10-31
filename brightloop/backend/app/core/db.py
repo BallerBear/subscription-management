@@ -16,13 +16,17 @@ from app.core.config import DATABASE_URL
 
 # Capped at 5: four teammates share one free-tier database. open=False means
 # importing this module does not connect; the pool opens on first use.
-_pool = ConnectionPool(
-    DATABASE_URL,
-    min_size=1,
-    max_size=5,
-    kwargs={"row_factory": dict_row},  # rows come back as dicts: row["total"]
-    open=False,
-)
+def _new_pool() -> ConnectionPool:
+    return ConnectionPool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=5,
+        kwargs={"row_factory": dict_row},  # rows come back as dicts: row["total"]
+        open=False,
+    )
+
+
+_pool = _new_pool()
 
 
 def _ensure_open() -> None:
@@ -60,5 +64,10 @@ def get_today(conn: psycopg.Connection):
 
 def close_pool() -> None:
     """Call on app shutdown."""
+    global _pool
     if not _pool.closed:
         _pool.close()
+        # A closed psycopg pool can never be reopened. Swap in a fresh, unopened
+        # one so the app (or a test that starts/stops the app repeatedly) can keep
+        # working; _ensure_open() opens it again on the next query.
+        _pool = _new_pool()

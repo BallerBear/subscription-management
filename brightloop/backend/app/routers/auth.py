@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 
 from app.core.config import ADMIN_BOOTSTRAP_TOKEN
 from app.core.db import connection, transaction
@@ -14,7 +14,15 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.schemas.auth import BootstrapAdminRequest, LoginRequest, RegisterRequest, StaffCreateRequest
+from app.schemas.auth import (
+    BootstrapAdminRequest,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    StaffCreateRequest,
+)
+from app.services import password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -158,3 +166,20 @@ def create_staff(
             (payload.email, hash_password(payload.password), payload.name),
         ).fetchone()
     return _public_user(user)
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, background: BackgroundTasks) -> dict:
+    """Always the same answer, so nobody can use this to discover which emails have accounts."""
+    link = password_reset.create_reset_link(payload.email)
+    if link:
+        # Sent after the response, so a slow mail server cannot reveal that the account exists.
+        background.add_task(password_reset.send_reset_email, payload.email, link)
+    return {"message": "If that email exists, we have sent a link."}
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest) -> dict:
+    if not password_reset.consume_token_and_set_password(payload.token, hash_password(payload.password)):
+        raise friendly_error("This reset link is invalid or has expired. Request a new one", 400)
+    return {"message": "Your password has been updated. You can sign in now."}
