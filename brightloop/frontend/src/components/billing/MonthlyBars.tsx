@@ -2,11 +2,19 @@
 import { motion } from "motion/react";
 import { EASE } from "../motion";
 import { formatMoney } from "@/lib/money";
-import { previewMonthly } from "@/lib/preview";
+import { useQuery } from "@/lib/useQuery";
+import { Skeleton } from "../States";
 
 // Hand-built bars (no chart library): bars grow up from the baseline, staggered.
-export function MonthlyBars({ data = previewMonthly }: { data?: typeof previewMonthly }) {
-  const max = Math.max(...data.map((d) => d.v));
+type Month = { month: string; collected: number };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function MonthlyBars() {
+  const { data: rows } = useQuery<Month[]>("/reports/monthly-collections");
+  if (!rows) return <Skeleton className="m-5 h-56" />;
+  if (rows.length === 0) return <p className="px-5 py-12 text-center text-muted">No payments yet. Collections will chart here.</p>;
+  const data = rows.slice(-6).map((r) => ({ m: MONTHS[Number(r.month.slice(5, 7)) - 1], v: r.collected }));
+  const max = Math.max(...data.map((d) => d.v), 1);
   return (
     <div className="flex h-56 items-end gap-4 px-5 pb-5 pt-8">
       {data.map((d, i) => {

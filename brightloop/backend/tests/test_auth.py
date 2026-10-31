@@ -155,6 +155,18 @@ def test_signup_sets_httponly_cookie_and_logs_you_in(client):
     assert client.get("/auth/me").status_code == 200  # the TestClient kept the cookie
 
 
+def test_bearer_access_token_is_accepted_without_a_cookie(client):
+    body = _signup_body()
+    signup = client.post("/auth/signup", json=body)
+    token = signup.json()["access_token"]
+    client.cookies.clear()
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json()["email"] == body["email"]
+
+
 def test_signup_lowercases_email(client):
     body = _signup_body(email=f"MiXeD-{uuid.uuid4().hex[:8]}{TEST_DOMAIN}".upper())
     r = client.post("/auth/signup", json=body)
@@ -213,11 +225,6 @@ def test_signup_accepts_the_72_byte_limit(client):
     assert r.status_code == 201
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="KNOWN GAP (CLAUDE.md s9/s12): server only checks length 8-72; "
-    "needs 9+ chars, upper, lower and special. Remove this marker when fixed.",
-)
 @pytest.mark.parametrize(
     "password",
     ["alllowercase1!", "ALLUPPERCASE1!", "NoSpecialChar1", "Abcdef1!"],  # no upper / no lower / no special / only 8 chars (spec: more than 8)
@@ -447,10 +454,6 @@ def test_require_role_matrix(login_as, role, path, expected):
 # ---------------------------------------------------------------- known gaps from the spec
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="KNOWN GAP (CLAUDE.md s9): cookie must be named 'brightloop_token', code uses 'access_token'.",
-)
 def test_cookie_is_named_brightloop_token(client):
     r = client.post("/auth/signup", json=_signup_body())
 

@@ -1,6 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
-import { CalendarClock, FileText, LayoutDashboard, Package, Repeat, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { AlarmClock, CalendarClock, FileText, LayoutDashboard, Package, Repeat, ShieldCheck, Users, UsersRound, Wallet } from "lucide-react";
 import { RoleGuard } from "@/lib/session";
 import { Logo } from "../Logo";
 import { MotionProvider } from "../motion";
@@ -11,6 +11,8 @@ const items: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: Repeat },
   { href: "/admin/invoices", label: "Invoices", icon: FileText },
+  { href: "/admin/payments", label: "Payments", icon: Wallet },
+  { href: "/admin/overdue", label: "Overdue", icon: AlarmClock },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/catalog", label: "Catalog", icon: Package },
   { href: "/admin/time-machine", label: "Time Machine", icon: CalendarClock },

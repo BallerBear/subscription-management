@@ -8,27 +8,37 @@ import { ArrowRight } from "lucide-react";
 import { AuthFrame } from "@/components/AuthFrame";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Field";
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, apiRequest, setAccessToken } from "@/lib/api";
 import { PREVIEW, homeFor, type Role, type SessionUser } from "@/lib/preview";
 import { loginSchema, type LoginValues } from "@/lib/validators";
+
+type AuthResponse = { user: SessionUser; access_token: string; token_type: "bearer" };
 
 export default function LoginPage() {
   const router = useRouter();
   const [formError, setFormError] = useState("");
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    mode: "onBlur", // validate when leaving a field, and on submit
+    mode: "onBlur",
   });
 
   async function onSubmit(values: LoginValues) {
     setFormError("");
     try {
-      await apiRequest("/auth/login", { method: "POST", body: JSON.stringify(values) });
-      const me = await apiRequest<SessionUser>("/auth/me");
-      router.push(homeFor(me.role)); // the role decides which shell you land in
-    } catch (e) {
-      if (e instanceof ApiError && e.fields) Object.entries(e.fields).forEach(([k, m]) => setError(k as keyof LoginValues, { message: m }));
-      else setFormError(e instanceof Error ? e.message : "Could not sign in. Try again.");
+      const result = await apiRequest<AuthResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(values),
+      });
+      setAccessToken(result.access_token);
+      router.push(homeFor(result.user.role));
+    } catch (error) {
+      if (error instanceof ApiError && error.fields) {
+        Object.entries(error.fields).forEach(([field, message]) => {
+          setError(field as keyof LoginValues, { message });
+        });
+      } else {
+        setFormError(error instanceof Error ? error.message : "Could not sign in. Try again.");
+      }
     }
   }
 
@@ -54,8 +64,10 @@ export default function LoginPage() {
         <div className="mt-10 border-t border-line pt-6">
           <p className="mb-3 text-xs uppercase tracking-[0.14em] text-muted">UI preview, no login needed</p>
           <div className="grid grid-cols-3 gap-2">
-            {(["ADMIN", "STAFF", "CUSTOMER"] as Role[]).map((r) => (
-              <Button key={r} type="button" variant="secondary" className="h-9 px-2 text-xs capitalize" onClick={() => previewAs(r)}>{r.toLowerCase()}</Button>
+            {(["ADMIN", "STAFF", "CUSTOMER"] as Role[]).map((role) => (
+              <Button key={role} type="button" variant="secondary" className="h-9 px-2 text-xs capitalize" onClick={() => previewAs(role)}>
+                {role.toLowerCase()}
+              </Button>
             ))}
           </div>
         </div>
