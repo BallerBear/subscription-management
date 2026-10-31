@@ -7,6 +7,7 @@ bookkeeping live in exactly one place.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from threading import Lock
 
 import psycopg
 from psycopg.rows import dict_row
@@ -14,27 +15,39 @@ from psycopg_pool import ConnectionPool
 
 from app.core.config import DATABASE_URL
 
-# Capped at 5: four teammates share one free-tier database. open=False means
-# importing this module does not connect; the pool opens on first use.
-_pool = ConnectionPool(
-    DATABASE_URL,
-    min_size=1,
-    max_size=5,
-    kwargs={"row_factory": dict_row},  # rows come back as dicts: row["total"]
-    open=False,
-)
+# Capped at 5: four teammates share one free-tier database.
+_POOL_LOCK = Lock()
+_pool: ConnectionPool | None = None
 
 
-def _ensure_open() -> None:
-    if _pool.closed:
-        _pool.open()
+def _new_pool() -> ConnectionPool:
+    """Create a fresh pool; a closed psycopg pool cannot be reopened."""
+    return ConnectionPool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=5,
+        kwargs={"row_factory": dict_row},  # rows come back as dicts: row["total"]
+        open=False,
+    )
+
+
+def _ensure_open() -> ConnectionPool:
+    """Return the shared pool, recreating it after an app/test-client shutdown."""
+    global _pool
+
+    with _POOL_LOCK:
+        if _pool is None:
+            _pool = _new_pool()
+        if _pool.closed:
+            _pool.open()
+        return _pool
 
 
 @contextmanager
 def connection() -> Iterator[psycopg.Connection]:
     """Borrow a connection for reads. Commits on success, rolls back on error."""
-    _ensure_open()
-    with _pool.connection() as conn:
+    pool = _ensure_open()
+    with pool.connection() as conn:
         yield conn
 
 
@@ -59,6 +72,11 @@ def get_today(conn: psycopg.Connection):
 
 
 def close_pool() -> None:
-    """Call on app shutdown."""
-    if not _pool.closed:
-        _pool.close()
+    """Close and discard the pool; the next app lifespan creates a fresh one."""
+    global _pool
+
+    with _POOL_LOCK:
+        if _pool is not None:
+            if not _pool.closed:
+                _pool.close()
+            _pool = None
