@@ -1,7 +1,7 @@
 """Time Machine: read, set and advance the system's 'today' (app_clock).
 
-STUB: names, parameters and return shapes are final so routers and the UI can
-build against them. Bodies are filled in by Person 1.
+Signatures and return shapes are settled so routers and the UI can build against
+them. Bodies are still to be written.
 """
 
 from datetime import date

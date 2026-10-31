@@ -1,6 +1,6 @@
-"""Recording payments (CLAUDE.md section 8.5).
+"""Recording payments.
 
-STUB. Triggers do the heavy lifting (balance check, amount_paid, flip to PAID);
+Not implemented yet. Triggers do the heavy lifting (balance check, amount_paid, flip to PAID);
 this service only checks what the database cannot: paid_on is not after 'today'.
 """
 

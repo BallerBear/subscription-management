@@ -14,4 +14,4 @@ Mailpit is available at http://localhost:8025. The API listens on http://localho
 
 ## Project status
 
-This repository is a scaffold. Billing rules, authentication flows, demo records, and UI screens are intentionally not implemented yet. See `CLAUDE.md` for shared project conventions.
+This repository is a scaffold. Billing rules, authentication flows, demo records, and UI screens are intentionally not implemented yet.

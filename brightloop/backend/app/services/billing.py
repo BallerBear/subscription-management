@@ -1,7 +1,7 @@
 """Billing engine: turns due ACTIVE subscriptions into invoices.
 
-STUB: signature and return shape are final (CLAUDE.md section 8.3). Person 1
-fills in the body: set-based SQL, one transaction, rounds until nothing is due.
+Signature and return shape are settled. The body is still to be written:
+set-based SQL, one transaction, rounds until nothing is due.
 """
 
 

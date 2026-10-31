@@ -1,7 +1,7 @@
-"""Discount application at billing time (CLAUDE.md section 8.4).
+"""Discount application at billing time.
 
-STUB. Discount CRUD (admin screens) belongs to Person 3; this module is only
-the part the billing engine calls.
+Not implemented yet. Discount CRUD for the admin screens lives elsewhere; this
+module is only the part the billing engine calls.
 """
 
 import psycopg

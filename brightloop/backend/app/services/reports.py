@@ -1,6 +1,7 @@
-"""Dashboard and report queries. All read from the SQL views (CLAUDE.md section 7).
+"""Dashboard and report queries. All read from the SQL views.
 
-STUB: shapes are final so the dashboard can be built against them.
+Return shapes are settled so the dashboard can be built against them; the
+bodies are still to be written.
 """
 
 from datetime import date

@@ -6,4 +6,6 @@ __pycache__/
 frontend/node_modules/
 frontend/.next/
 frontend/tsconfig.tsbuildinfo
-.env.example
+CLAUDE.md
+.claude/
+progress.md
