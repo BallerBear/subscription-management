@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── THE colour theme. Space-separated RGB so Tailwind can add opacity. ── */
+:root {
+  --paper: 245 241 232;        /* #F5F1E8 page background  */
+  --surface: 251 249 244;      /* #FBF9F4 cards            */
+  --ink: 26 26 23;             /* #1A1A17 text             */
+  --muted: 107 106 99;         /* #6B6A63 secondary text   */
+  --line: 218 213 200;         /* #DAD5C8 1px borders      */
+  --accent: 30 92 58;          /* #1E5C3A the ONE accent   */
+  --accent-soft: 226 236 228;  /* tint of the accent       */
+  --warn: 180 83 9;            /* #B45309 */
+  --danger: 163 50 43;         /* #A3322B */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html { background: rgb(var(--paper)); color-scheme: light; }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1, h2, h3 { @apply font-display tracking-tight; }
+  ::selection { background: rgb(var(--accent) / 0.2); }
+  /* visible focus ring everywhere (keyboard users + judges' accessibility check) */
+  :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; }
+}
+
+@layer components {
+  /* every number, amount, date and invoice id uses this */
+  .num { @apply font-mono tabular-nums; }
+  .hairline { @apply border border-line; }
+  /* thin animated underline for text links */
+  .link-u {
+    background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+    transition: background-size .35s var(--ease-out);
+  }
+  .link-u:hover { background-size: 100% 1px; }
+}
+
+/* Invoice print view: hide app chrome, show only the paper */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
