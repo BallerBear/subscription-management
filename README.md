@@ -108,7 +108,7 @@ All three share one password: `Brightloop@123`
 | Customer | `customer@kaveri.example.com` |
 
 The customer account belongs to Kaveri Textiles, so it sees only Kaveri's subscriptions and invoices.
-![Brightloop login screen](photos/login.png)
+![Brightloop login screen](photos/log-in.png)
 
 A fresh install has no admin at all. If you start from an empty database, set `ADMIN_BOOTSTRAP_TOKEN` in `.env` and call `POST /auth/bootstrap-admin` once. It refuses to run again after an admin exists.
 
@@ -241,7 +241,7 @@ There's a dedicated Overdue screen for chasing, ordered oldest first, showing th
 
 The dashboard leads with the number a finance lead cares about most (what's outstanding, and what's overdue within that) and then a table of the invoices that need attention. It also shows active subscription count, monthly recurring revenue, and what has been collected this month, plus a bar chart of collections by month.
 
-![Admin dashboard: outstanding, overdue, collected this month, MRR and active subscriptions](photos/dashboard.png)
+![Admin dashboard: outstanding, overdue, collected this month, MRR and active subscriptions](photos/admin-dashboard.png)
 
 ![Dashboard: collections by month, Time Machine shortcut and latest invoices](photos/dashboard-invoices.png)
 
@@ -251,7 +251,7 @@ Behind it, three report endpoints (`kpis`, `monthly-collections`, `overdue`) rea
 
 Customers get their own small area with an overview, their subscriptions and their invoices, with printable invoice pages.
 
-![Customer portal overview](photos/customer-portal.png)
+![Customer portal overview](photos/customer.png)
 
 The security detail worth knowing: portal endpoints **never take a customer id from the URL or request body.** The server works out who you are from your login and looks up your customer record. Changing an invoice number in the address bar to try to see someone else's returns a 404, because the query is scoped to you.
 
