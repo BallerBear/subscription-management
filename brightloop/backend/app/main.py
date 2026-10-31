@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from app.core.db import close_pool
+from app.core.errors import register_error_handlers
 from app.routers import (
     auth,
     catalog,
@@ -15,6 +17,7 @@ from app.routers import (
 )
 
 app = FastAPI(title="Brightloop API", version="0.1.0")
+register_error_handlers(app)
 
 for router_module in (
     auth,
@@ -35,3 +38,8 @@ for router_module in (
 @app.get("/health", tags=["health"])
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    close_pool()
